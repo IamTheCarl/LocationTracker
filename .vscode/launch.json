@@ -1,0 +1,28 @@
+{
+    /* 
+     * Requires the Rust Language Server (RLS) and Cortex-Debug extensions
+     * https://marketplace.visualstudio.com/items?itemName=rust-lang.rust
+     * https://marketplace.visualstudio.com/items?itemName=marus25.cortex-debug
+     */
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "cortex-debug",
+            "request": "launch",
+            "name": "Debug (OpenOCD)",
+            "servertype": "openocd",
+            "cwd": "${workspaceRoot}",
+            "preLaunchTask": "cargo build",
+            "runToMain": true,
+            "svdFile": "STM32F303.svd",
+            "executable": "./target/thumbv7em-none-eabihf/debug/location_tracker",
+            "configFiles": [
+                "openocd.cfg"
+            ],
+            "device": "STM32F303",
+            "postLaunchCommands": [
+                "monitor arm semihosting enable"
+            ]
+        }
+    ]
+}
