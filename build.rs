@@ -12,7 +12,6 @@ fn main() {
         .unwrap();
     println!("cargo:rustc-link-search={}", out.display());
 
-    // Only re-run the build script when memory.x is changed,
-    // instead of when any part of the source code changes.
+    // Only re-run the build script when memory.x is changed.
     println!("cargo:rerun-if-changed=memory.x");
 }

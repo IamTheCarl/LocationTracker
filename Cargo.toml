@@ -8,9 +8,10 @@ edition = "2018"
 cortex-m = "0.6"
 cortex-m-rt = "0.6"
 cortex-m-semihosting = "0.3"
-panic-semihosting = "0.5.3"
+panic-semihosting = "0.5"
 log = "0.4"
 switch-hal = "0.3"
+cortex-m-rtic = "0.5"
 
 [dependencies.cortex-m-log]
 version = "0.6"
@@ -18,7 +19,10 @@ features = ["semihosting", "log-integration"]
 
 [dependencies.stm32f3xx-hal]
 version = "0.5"
-features = ["stm32f303xc"]
+features = ["stm32f303xc", "rt"]
+
+[build-dependencies]
+freertos-cargo-build = "0.1"
 
 [[bin]]
 name = "location_tracker"
