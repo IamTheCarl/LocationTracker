@@ -3,9 +3,11 @@
 #![feature(lang_items)]
 #![feature(alloc_error_handler)]
 
-extern crate panic_itm;
+use cortex_m::{
+    asm,
+    interrupt
+};
 
-use cortex_m::asm;
 use cortex_m_rt::{
     exception,
     ExceptionFrame,
@@ -22,7 +24,12 @@ use cortex_m_log::{
     },
 };
 
-use log::info;
+use core::panic::PanicInfo;
+
+use log::{
+    info,
+    error
+};
 
 use stm32f3xx_hal as hal;
 
@@ -70,34 +77,39 @@ fn main() -> ! {
 
     info!("Log is working.");
 
-    // Get handles to the device peripherals.
-    let dp = hal::pac::Peripherals::take().unwrap();
+    // // Get handles to the device peripherals.
+    // let dp = hal::pac::Peripherals::take().unwrap();
 
-    // Get the Reset and Clock Control. This gives us access to the AMBA High Preformance Bus, needed for the GPIOs.
-    let mut rcc = dp.RCC.constrain();
+    // // Get the Reset and Clock Control. This gives us access to the AMBA High Preformance Bus, needed for the GPIOs.
+    // let mut rcc = dp.RCC.constrain();
 
-    // Get the port.
-    let mut gpioe = dp.GPIOE.split(&mut rcc.ahb);
+    // // Get the port.
+    // let mut gpioe = dp.GPIOE.split(&mut rcc.ahb);
 
-    // Red LED is pin PE9.
-    let red = gpioe.pe9.into_push_pull_output(&mut gpioe.moder, &mut gpioe.otyper);
-    let mut red = red.into_active_high_switch();
+    // // Red LED is pin PE9.
+    // let red = gpioe.pe9.into_push_pull_output(&mut gpioe.moder, &mut gpioe.otyper);
+    // let mut red = red.into_active_high_switch();
 
-    // Green LED is pin PE15
-    let green = gpioe.pe15.into_push_pull_output(&mut gpioe.moder, &mut gpioe.otyper);
-    let mut green = green.into_active_low_switch();
+    // // Green LED is pin PE15
+    // let green = gpioe.pe15.into_push_pull_output(&mut gpioe.moder, &mut gpioe.otyper);
+    // let mut green = green.into_active_low_switch();
 
-    red.on().ok();
-    green.on().ok();
+    // red.on().ok();
+    // green.on().ok();
 
     Task::new().name("hello").stack_size(128).priority(TaskPriority(1)).start(move || {
         info!("Task started.");
 
         loop {
-            freertos_rust::CurrentTask::delay(Duration::ms(1000));
-            red.toggle().ok();
-            green.toggle().ok();
+           freertos_rust::CurrentTask::delay(Duration::ms(1000));            
+           info!("Task is alive.");
         }
+
+        // loop {
+        //     freertos_rust::CurrentTask::delay(Duration::ms(1000));
+        //     red.toggle().ok();
+        //     green.toggle().ok();
+        // }
     }).unwrap();
 
     let control = cortex_m::register::control::read();
@@ -105,6 +117,18 @@ fn main() -> ! {
     info!("Is privledge: {}", privledge.is_privileged());
 
     FreeRtosUtils::start_scheduler();
+}
+
+#[panic_handler]
+fn panic(info: &PanicInfo) -> ! {
+    interrupt::disable();
+
+    error!("{}", info);
+
+    loop {
+        // Get the debugger's attention.
+        asm::bkpt();
+    }
 }
 
 #[exception]
