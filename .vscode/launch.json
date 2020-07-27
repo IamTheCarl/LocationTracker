@@ -17,12 +17,21 @@
             "svdFile": "STM32F303.svd",
             "executable": "./target/thumbv7em-none-eabihf/debug/location_tracker",
             "configFiles": [
-                "openocd.cfg"
+                "openocd.cfg",
             ],
             "device": "STM32F303",
             "postLaunchCommands": [
                 "monitor arm semihosting enable"
-            ]
+            ],
+            "swoConfig": {
+                "enabled": true,
+                "cpuFrequency": 8000000,
+                "swoFrequency": 2000000,
+                "source": "probe",
+                "decoders": [
+                    { "type": "console", "label": "ITM", "port": 0 }
+                ]
+            },
         }
     ]
 }

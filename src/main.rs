@@ -3,7 +3,7 @@
 #![feature(lang_items)]
 #![feature(alloc_error_handler)]
 
-extern crate panic_semihosting;
+extern crate panic_itm;
 
 use cortex_m::asm;
 use cortex_m_rt::{
@@ -13,7 +13,8 @@ use cortex_m_rt::{
 };
 
 use cortex_m_log::{
-    printer::Semihosting,
+    printer::itm::ItmSync,
+    destination::Itm,
     modes::InterruptOk,
     log::{
         Logger,
@@ -45,10 +46,19 @@ pub static SystemCoreClock: u32 = 64_000_000;
 #[entry]
 fn main() -> ! {
     // Setup logging.
+    // let logger = Logger {
+    //     //Uses semihosting as destination with no interrupt control.
+    //     inner: Semihosting::<InterruptOk, _>::stdout()
+    //         .expect("Failed to get semihosting stdout"),
+    //     level: log::LevelFilter::Info
+    // };
+
+    // Get handles to the core peripherals.
+    let core = cortex_m::Peripherals::take().unwrap();
+
     let logger = Logger {
         //Uses semihosting as destination with no interrupt control.
-        inner: Semihosting::<InterruptOk, _>::stdout()
-            .expect("Failed to get semihosting stdout"),
+        inner: ItmSync::<InterruptOk>::new(Itm::new(core.ITM)),
         level: log::LevelFilter::Info
     };
 
@@ -58,8 +68,7 @@ fn main() -> ! {
         trick_init(&logger).ok();
     }
 
-    // Get handles to the core peripherals.
-    let _core = cortex_m::Peripherals::take().unwrap();
+    info!("Log is working.");
 
     // Get handles to the device peripherals.
     let dp = hal::pac::Peripherals::take().unwrap();

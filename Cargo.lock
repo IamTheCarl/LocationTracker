@@ -75,7 +75,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "978caafe65d1023d38b00c76b83564788fc351d954a5005fb72cf992c0d61458"
 dependencies = [
  "cortex-m",
- "cortex-m-semihosting",
  "log",
 ]
 
@@ -164,7 +163,7 @@ dependencies = [
  "freertos-cargo-build",
  "freertos-rust",
  "log",
- "panic-semihosting",
+ "panic-itm",
  "stm32f3xx-hal",
  "switch-hal",
 ]
@@ -194,13 +193,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "546c37ac5d9e56f55e73b677106873d9d9f5190605e41a856503623648488cae"
 
 [[package]]
-name = "panic-semihosting"
-version = "0.5.3"
+name = "panic-itm"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c03864ac862876c16a308f5286f4aa217f1a69ac45df87ad3cd2847f818a642c"
+checksum = "98830d17a95587207e41edaa3009b143d326ce134b0e3538ac98246a67d66cc3"
 dependencies = [
  "cortex-m",
- "cortex-m-semihosting",
 ]
 
 [[package]]
