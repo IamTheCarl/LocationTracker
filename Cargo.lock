@@ -153,6 +153,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "l3gd20"
+version = "0.2.0"
+source = "git+https://github.com/bobgates/l3gd20#b8f3959a5c44f5f12ba548a82ce21a944c7a6332"
+dependencies = [
+ "embedded-hal",
+ "generic-array 0.13.2",
+]
+
+[[package]]
 name = "location_tracker"
 version = "0.1.0"
 dependencies = [
@@ -161,6 +170,7 @@ dependencies = [
  "freertos-cargo-build",
  "freertos-rust",
  "itm_logger",
+ "l3gd20",
  "log",
  "lsm303dlhc",
  "stm32f3xx-hal",

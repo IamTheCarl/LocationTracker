@@ -24,6 +24,9 @@ use itm_logger::{
 
 use core::panic::PanicInfo;
 
+use freertos_rust::*;
+extern crate alloc;
+
 use stm32f3xx_hal as hal;
 
 use hal::{
@@ -37,14 +40,27 @@ use switch_hal::{
     IntoSwitch,
     ToggleableOutputSwitch,
 };
+use lsm303dlhc::{
+    Lsm303dlhc,
+    AccelOdr,
+    MagOdr,
+};
+use l3gd20::{
+    L3gd20,
+};
 
-use freertos_rust::*; 
-
-use lsm303dlhc::Lsm303dlhc;
+use alloc::sync::Arc;
 
 #[allow(non_upper_case_globals)]
 #[no_mangle]
 pub static SystemCoreClock: u32 = 8_000_000;
+
+#[derive(Clone, Copy, Debug)]
+enum SensorData {
+    Acceleration((i16, i16, i16)),
+    Magnetic((i16, i16, i16)),
+    Rotation((i16, i16, i16)),
+}
 
 #[entry]
 fn main() -> ! {
@@ -66,43 +82,105 @@ fn main() -> ! {
     let mut rcc = dp.RCC.constrain();
     let clocks = rcc.cfgr.freeze(&mut flash.acr);
 
-    // Setup our Accelerometer.
+    // Get our ports.
+    let mut gpioa = dp.GPIOA.split(&mut rcc.ahb);
     let mut gpiob = dp.GPIOB.split(&mut rcc.ahb);
+    let mut gpioe = dp.GPIOE.split(&mut rcc.ahb);
+
+    // Setup our Accelerometer.
     let scl = gpiob.pb6.into_af4(&mut gpiob.moder, &mut gpiob.afrl);
     let sda = gpiob.pb7.into_af4(&mut gpiob.moder, &mut gpiob.afrl);
 
     let i2c = hal::i2c::I2c::i2c1(dp.I2C1, (scl, sda), 400.khz(), clocks, &mut rcc.apb1);
     let mut accelerometer = Lsm303dlhc::new(i2c).unwrap();
 
-    // Get the port.
-    let mut gpioe = dp.GPIOE.split(&mut rcc.ahb);
+    // Setup our gyoroscope.
+    let sck = gpioa.pa5.into_af5(&mut gpioa.moder, &mut gpioa.afrl);
+    let miso = gpioa.pa6.into_af5(&mut gpioa.moder, &mut gpioa.afrl);
+    let mosi = gpioa.pa7.into_af5(&mut gpioa.moder, &mut gpioa.afrl);
+ 
+    let spi = hal::spi::Spi::spi1(
+        dp.SPI1,
+        (sck, miso, mosi),
+        l3gd20::MODE,
+        1.mhz(),
+        clocks,
+        &mut rcc.apb2,
+    );
+
+    let mut nss = gpioe.pe3
+        .into_push_pull_output(&mut gpioe.moder, &mut gpioe.otyper);
+    nss.set_high().ok();
+
+    let mut gyoroscope = L3gd20::new(spi, nss).unwrap();
+
+    // Setup our LEDs.
 
     // LED3 is pin PE9.
     let ld1 = gpioe.pe9.into_push_pull_output(&mut gpioe.moder, &mut gpioe.otyper);
     let mut ld1 = ld1.into_active_high_switch();
 
+    // LED4 is on pin PE8
+    let ld4 = gpioe.pe8.into_push_pull_output(&mut gpioe.moder, &mut gpioe.otyper);
+    let mut ld4 = ld4.into_active_high_switch();
+
     // LED6 is pin PE15
     let ld6 = gpioe.pe15.into_push_pull_output(&mut gpioe.moder, &mut gpioe.otyper);
     let mut ld6 = ld6.into_active_high_switch();
 
-    ld1.on().ok();
-    ld6.off().ok();
+    // Setup our tasks to collect data from the accelerometer and gyro.
+    // Give them a queue to send that data to the computation task with.
+    let sensor_data_queue = Arc::new(freertos_rust::Queue::new(100).unwrap());
+    let accel_queue = sensor_data_queue.clone();
+    let gyro_queue = sensor_data_queue.clone();
 
-    Task::new().name("hello").stack_size(1024).priority(TaskPriority(1)).start(move || {
-        info!("Task started.");
+    Task::new().name("ACEL").stack_size(512).priority(TaskPriority(1)).start(move || {
+        ld1.off().ok();
+        accelerometer.accel_odr(AccelOdr::Hz400).unwrap();
+        accelerometer.mag_odr(MagOdr::Hz75).unwrap();
 
         loop {
-            freertos_rust::CurrentTask::delay(Duration::ms(100));
-            ld1.toggle().ok();
-            ld6.toggle().ok();
+            // TODO replace this with DMA.
+            freertos_rust::CurrentTask::delay(Duration::ms(1000/400));
 
-            match accelerometer.accel() {
-                Ok(vector) => {
-                    info!("{:?}", vector);
-                },
-                Err(error) => {
-                    error!("Failed to get acceleration: {:?}", error);
-                }
+            let vector = accelerometer.accel();
+
+            if let Ok(vector) = vector {
+                ld1.toggle().ok();
+                accel_queue.send(SensorData::Acceleration((vector.x, vector.y, vector.z)), Duration::zero()).ok();
+            }
+
+            let vector = accelerometer.mag();
+
+            if let Ok(vector) = vector {
+                ld4.toggle().ok();
+                accel_queue.send(SensorData::Magnetic((vector.x, vector.y, vector.z)), Duration::zero()).ok();
+            }
+        }
+    }).unwrap();
+
+    Task::new().name("GYRO").stack_size(512).priority(TaskPriority(1)).start(move || {
+        ld6.off().ok();
+        gyoroscope.set_odr(l3gd20::Odr::Hz760).unwrap();
+
+        loop {
+            // TODO replace this with DMA.
+            freertos_rust::CurrentTask::delay(Duration::ms(1000/760));
+
+            let readings = gyoroscope.all();
+            if let Ok(readings) = readings {
+                ld6.toggle().ok();
+                let vector = readings.gyro;
+                gyro_queue.send(SensorData::Rotation((vector.x, vector.y, vector.z)), Duration::zero()).ok();
+            }
+        }
+    }).unwrap();
+
+    Task::new().name("DATACOMPUTE").stack_size(1024).priority(TaskPriority(2)).start(move || {
+        loop {
+            let reading = sensor_data_queue.receive(Duration::infinite()).ok();
+            if let Some(reading) = reading {
+                // info!("{:?}", reading);
             }
         }
     }).unwrap();

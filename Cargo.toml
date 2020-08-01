@@ -17,6 +17,7 @@ log = "0.4"
 switch-hal = "0.3"
 freertos-rust = "0.1"
 lsm303dlhc = "0.2"
+l3gd20 = { git = "https://github.com/bobgates/l3gd20" }
 
 [dependencies.itm_logger]
 version = "0.1"
