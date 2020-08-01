@@ -14,22 +14,15 @@ use cortex_m_rt::{
     entry,
 };
 
-use cortex_m_log::{
-    printer::itm::ItmSync,
-    destination::Itm,
-    modes::InterruptOk,
-    log::{
-        Logger,
-        trick_init,
-    },
+use itm_logger::{
+    logger_init,
+    log,
+    info,
+    error,
+    Level,
 };
 
 use core::panic::PanicInfo;
-
-use log::{
-    info,
-    error
-};
 
 use stm32f3xx_hal as hal;
 
@@ -48,73 +41,49 @@ use freertos_rust::*;
 
 #[allow(non_upper_case_globals)]
 #[no_mangle]
-pub static SystemCoreClock: u32 = 64_000_000;
+pub static SystemCoreClock: u32 = 8_000_000;
 
 #[entry]
 fn main() -> ! {
     // Setup logging.
-    // let logger = Logger {
-    //     //Uses semihosting as destination with no interrupt control.
-    //     inner: Semihosting::<InterruptOk, _>::stdout()
-    //         .expect("Failed to get semihosting stdout"),
-    //     level: log::LevelFilter::Info
-    // };
-
-    // Get handles to the core peripherals.
-    let core = cortex_m::Peripherals::take().unwrap();
-
-    let logger = Logger {
-        //Uses semihosting as destination with no interrupt control.
-        inner: ItmSync::<InterruptOk>::new(Itm::new(core.ITM)),
-        level: log::LevelFilter::Info
-    };
-
-    // Tricks the compiler into thinking the logger is a static global.
-    // It dropping the logger after this will result in undefined behavior.
-    unsafe {
-        trick_init(&logger).ok();
-    }
+    logger_init();
+    // You will need to update the tpiu baudrate if you change the speed of the sysclk.
+    // REMEMBER: The log functions are pretty heavy. A task needs at least 512kb of stack to use these.
 
     info!("Log is working.");
 
-    // // Get handles to the device peripherals.
-    // let dp = hal::pac::Peripherals::take().unwrap();
+    // Get handles to the core peripherals.
+    let _core = cortex_m::Peripherals::take().unwrap();
 
-    // // Get the Reset and Clock Control. This gives us access to the AMBA High Preformance Bus, needed for the GPIOs.
-    // let mut rcc = dp.RCC.constrain();
+    // Get handles to the device peripherals.
+    let dp = hal::pac::Peripherals::take().unwrap();
 
-    // // Get the port.
-    // let mut gpioe = dp.GPIOE.split(&mut rcc.ahb);
+    // Get the Reset and Clock Control. This gives us access to the AMBA High Preformance Bus, needed for the GPIOs.
+    let mut rcc = dp.RCC.constrain();
 
-    // // Red LED is pin PE9.
-    // let red = gpioe.pe9.into_push_pull_output(&mut gpioe.moder, &mut gpioe.otyper);
-    // let mut red = red.into_active_high_switch();
+    // Get the port.
+    let mut gpioe = dp.GPIOE.split(&mut rcc.ahb);
 
-    // // Green LED is pin PE15
-    // let green = gpioe.pe15.into_push_pull_output(&mut gpioe.moder, &mut gpioe.otyper);
-    // let mut green = green.into_active_low_switch();
+    // Red LED is pin PE9.
+    let red = gpioe.pe9.into_push_pull_output(&mut gpioe.moder, &mut gpioe.otyper);
+    let mut red = red.into_active_high_switch();
 
-    // red.on().ok();
-    // green.on().ok();
+    // Green LED is pin PE15
+    let green = gpioe.pe15.into_push_pull_output(&mut gpioe.moder, &mut gpioe.otyper);
+    let mut green = green.into_active_low_switch();
 
-    Task::new().name("hello").stack_size(128).priority(TaskPriority(1)).start(move || {
+    red.on().ok();
+    green.on().ok();
+
+    Task::new().name("hello").stack_size(512).priority(TaskPriority(1)).start(move || {
         info!("Task started.");
 
         loop {
-           freertos_rust::CurrentTask::delay(Duration::ms(1000));            
-           info!("Task is alive.");
+            freertos_rust::CurrentTask::delay(Duration::ms(1000));
+            red.toggle().ok();
+            green.toggle().ok();
         }
-
-        // loop {
-        //     freertos_rust::CurrentTask::delay(Duration::ms(1000));
-        //     red.toggle().ok();
-        //     green.toggle().ok();
-        // }
     }).unwrap();
-
-    let control = cortex_m::register::control::read();
-    let privledge = control.npriv();
-    info!("Is privledge: {}", privledge.is_privileged());
 
     FreeRtosUtils::start_scheduler();
 }

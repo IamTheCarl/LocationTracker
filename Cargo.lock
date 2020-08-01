@@ -69,16 +69,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cortex-m-log"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "978caafe65d1023d38b00c76b83564788fc351d954a5005fb72cf992c0d61458"
-dependencies = [
- "cortex-m",
- "log",
-]
-
-[[package]]
 name = "cortex-m-rt"
 version = "0.6.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -97,15 +87,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "cortex-m-semihosting"
-version = "0.3.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "113ef0ecffee2b62b58f9380f4469099b30e9f9cbee2804771b4203ba1762cfa"
-dependencies = [
- "cortex-m",
 ]
 
 [[package]]
@@ -153,15 +134,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "itm_logger"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9950a91673557006ee7b9aff8e2b67d5a9ca3d91418b32a5f7f83a25cde9bc2a"
+dependencies = [
+ "cortex-m",
+ "log",
+]
+
+[[package]]
 name = "location_tracker"
 version = "0.1.0"
 dependencies = [
  "cortex-m",
- "cortex-m-log",
  "cortex-m-rt",
- "cortex-m-semihosting",
  "freertos-cargo-build",
  "freertos-rust",
+ "itm_logger",
  "log",
  "stm32f3xx-hal",
  "switch-hal",

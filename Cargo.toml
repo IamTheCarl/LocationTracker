@@ -8,7 +8,6 @@ edition = "2018"
 # Cortex core stuff.
 cortex-m = "0.6"
 cortex-m-rt = "0.6"
-cortex-m-semihosting = "0.3"
 
 # MCU specific stuff.
 stm32f3xx-hal =  {version = "0.5", features = ["stm32f303xc", "rt"] }
@@ -18,9 +17,9 @@ log = "0.4"
 switch-hal = "0.3"
 freertos-rust = "0.1"
 
-[dependencies.cortex-m-log]
-version = "0.6"
-features = ["itm", "log-integration"]
+[dependencies.itm_logger]
+version = "0.1"
+features = ["perform-enabled-checks"]
 
 [build-dependencies]
 freertos-cargo-build = "0.1"
