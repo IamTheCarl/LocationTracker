@@ -29,6 +29,7 @@ use stm32f3xx_hal as hal;
 use hal::{
     gpio::GpioExt,
     rcc::RccExt,
+    prelude::*,
 };
 
 use switch_hal::{
@@ -38,6 +39,8 @@ use switch_hal::{
 };
 
 use freertos_rust::*; 
+
+use lsm303dlhc::Lsm303dlhc;
 
 #[allow(non_upper_case_globals)]
 #[no_mangle]
@@ -58,30 +61,49 @@ fn main() -> ! {
     // Get handles to the device peripherals.
     let dp = hal::pac::Peripherals::take().unwrap();
 
-    // Get the Reset and Clock Control. This gives us access to the AMBA High Preformance Bus, needed for the GPIOs.
+    // Get access to the clocks.
+    let mut flash = dp.FLASH.constrain();
     let mut rcc = dp.RCC.constrain();
+    let clocks = rcc.cfgr.freeze(&mut flash.acr);
+
+    // Setup our Accelerometer.
+    let mut gpiob = dp.GPIOB.split(&mut rcc.ahb);
+    let scl = gpiob.pb6.into_af4(&mut gpiob.moder, &mut gpiob.afrl);
+    let sda = gpiob.pb7.into_af4(&mut gpiob.moder, &mut gpiob.afrl);
+
+    let i2c = hal::i2c::I2c::i2c1(dp.I2C1, (scl, sda), 400.khz(), clocks, &mut rcc.apb1);
+    let mut accelerometer = Lsm303dlhc::new(i2c).unwrap();
 
     // Get the port.
     let mut gpioe = dp.GPIOE.split(&mut rcc.ahb);
 
-    // Red LED is pin PE9.
-    let red = gpioe.pe9.into_push_pull_output(&mut gpioe.moder, &mut gpioe.otyper);
-    let mut red = red.into_active_high_switch();
+    // LED3 is pin PE9.
+    let ld1 = gpioe.pe9.into_push_pull_output(&mut gpioe.moder, &mut gpioe.otyper);
+    let mut ld1 = ld1.into_active_high_switch();
 
-    // Green LED is pin PE15
-    let green = gpioe.pe15.into_push_pull_output(&mut gpioe.moder, &mut gpioe.otyper);
-    let mut green = green.into_active_low_switch();
+    // LED6 is pin PE15
+    let ld6 = gpioe.pe15.into_push_pull_output(&mut gpioe.moder, &mut gpioe.otyper);
+    let mut ld6 = ld6.into_active_high_switch();
 
-    red.on().ok();
-    green.on().ok();
+    ld1.on().ok();
+    ld6.off().ok();
 
-    Task::new().name("hello").stack_size(512).priority(TaskPriority(1)).start(move || {
+    Task::new().name("hello").stack_size(1024).priority(TaskPriority(1)).start(move || {
         info!("Task started.");
 
         loop {
-            freertos_rust::CurrentTask::delay(Duration::ms(1000));
-            red.toggle().ok();
-            green.toggle().ok();
+            freertos_rust::CurrentTask::delay(Duration::ms(100));
+            ld1.toggle().ok();
+            ld6.toggle().ok();
+
+            match accelerometer.accel() {
+                Ok(vector) => {
+                    info!("{:?}", vector);
+                },
+                Err(error) => {
+                    error!("Failed to get acceleration: {:?}", error);
+                }
+            }
         }
     }).unwrap();
 
@@ -156,7 +178,6 @@ fn allocation_error_handler(_: core::alloc::Layout) -> ! {
     panic!("Allocation failure.");
 }
 
-// We mark these as no_mangle so that the linker can link the FreeRTOS code to our handler functions.
 #[no_mangle]
 extern "C" fn vApplicationIdleHook() {
     // Will put the processor to sleep until the next interrupt happens.

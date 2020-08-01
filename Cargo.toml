@@ -16,6 +16,7 @@ stm32f3xx-hal =  {version = "0.5", features = ["stm32f303xc", "rt"] }
 log = "0.4"
 switch-hal = "0.3"
 freertos-rust = "0.1"
+lsm303dlhc = "0.2"
 
 [dependencies.itm_logger]
 version = "0.1"
