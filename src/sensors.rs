@@ -1,7 +1,11 @@
 
 use freertos_rust::*;
 use stm32f3xx_hal as hal;
-use hal::hal::blocking::i2c::{Write, WriteRead};
+use hal::hal::{
+    blocking::i2c,
+    blocking::spi,
+    digital::v2::OutputPin,
+};
 use alloc::sync::Arc;
 
 use lsm303dlhc::{
@@ -9,6 +13,8 @@ use lsm303dlhc::{
     AccelOdr,
     MagOdr,
 };
+
+use l3gd20::L3gd20;
 
 #[derive(Clone, Copy, Debug)]
 pub enum SensorData {
@@ -19,9 +25,11 @@ pub enum SensorData {
 
 pub fn start_accelerometer_reading<I2C, E>(i2c: I2C, queue: Arc<freertos_rust::Queue<SensorData>>) -> Result<(), FreeRtosError>
 where
-    I2C: WriteRead<Error = E> + Write<Error = E> + Send + 'static,
+    I2C: i2c::WriteRead<Error = E> + i2c::Write<Error = E> + Send + 'static,
     E: core::fmt::Debug
 {
+
+    // TODO maybe push this error as a result rather than panic?
     let mut accelerometer = Lsm303dlhc::new(i2c)
         .expect("Failed to initalize accelerometer.");
 
@@ -51,4 +59,32 @@ where
     Ok(())
 }
 
-// TODO move sensor prosessing into here.
+pub fn start_gyroscope_sensor_reading<SPI, CS, E>(spi: SPI, cs: CS,
+    queue: Arc<freertos_rust::Queue<SensorData>>) -> Result<(), FreeRtosError>
+where
+    SPI: spi::Transfer<u8, Error = E> + spi::Write<u8, Error = E> + Send + 'static,
+    CS: OutputPin + Send + 'static,
+    E: core::fmt::Debug,
+{
+    let mut gyoroscope = L3gd20::new(spi, cs).unwrap();
+
+    Task::new().name("GYRO").stack_size(512).priority(TaskPriority(1)).start(move || {
+        gyoroscope.set_odr(l3gd20::Odr::Hz760).unwrap();
+        gyoroscope.set_scale(l3gd20::Scale::Dps2000).unwrap();
+        gyoroscope.set_bandwidth(l3gd20::Bandwidth::High).unwrap();
+
+        loop {
+            // TODO replace this with DMA.
+            freertos_rust::CurrentTask::delay(Duration::ms(1000/380));
+
+            if gyoroscope.status().unwrap().new_data {
+                let vector = gyoroscope.gyro();
+                if let Ok(vector) = vector {
+                    queue.send(SensorData::Rotation((vector.x, vector.y, vector.z)), Duration::zero()).ok();
+                }
+            }
+        }
+    }).unwrap();
+
+    Ok(())
+}
