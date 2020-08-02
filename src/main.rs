@@ -3,17 +3,9 @@
 #![feature(lang_items)]
 #![feature(alloc_error_handler)]
 
-use cortex_m::{
-    asm,
-    interrupt
-};
+use cortex_m_rt::entry;
 
-use cortex_m_rt::{
-    exception,
-    ExceptionFrame,
-    entry,
-};
-
+#[allow(unused)]
 use itm_logger::{
     logger_init,
     log,
@@ -21,8 +13,6 @@ use itm_logger::{
     error,
     Level,
 };
-
-use core::panic::PanicInfo;
 
 use freertos_rust::*;
 extern crate alloc;
@@ -40,27 +30,26 @@ use switch_hal::{
     IntoSwitch,
     ToggleableOutputSwitch,
 };
-use lsm303dlhc::{
-    Lsm303dlhc,
-    AccelOdr,
-    MagOdr,
-};
-use l3gd20::{
-    L3gd20,
-};
+
+use l3gd20::L3gd20;
 
 use alloc::sync::Arc;
+use fixed_sqrt::FixedSqrt;
+use fixed::types::I17F15;
+
+// Acceleration units.
+type ACU = I17F15;
+
 
 #[allow(non_upper_case_globals)]
 #[no_mangle]
 pub static SystemCoreClock: u32 = 8_000_000;
 
-#[derive(Clone, Copy, Debug)]
-enum SensorData {
-    Acceleration((i16, i16, i16)),
-    Magnetic((i16, i16, i16)),
-    Rotation((i16, i16, i16)),
-}
+#[global_allocator]
+static ALLOCATOR: FreeRtosAllocator = FreeRtosAllocator;
+
+mod handlers;
+mod sensors;
 
 #[entry]
 fn main() -> ! {
@@ -91,8 +80,7 @@ fn main() -> ! {
     let scl = gpiob.pb6.into_af4(&mut gpiob.moder, &mut gpiob.afrl);
     let sda = gpiob.pb7.into_af4(&mut gpiob.moder, &mut gpiob.afrl);
 
-    let i2c = hal::i2c::I2c::i2c1(dp.I2C1, (scl, sda), 400.khz(), clocks, &mut rcc.apb1);
-    let mut accelerometer = Lsm303dlhc::new(i2c).unwrap();
+    let accellerometer_i2c = hal::i2c::I2c::i2c1(dp.I2C1, (scl, sda), 400.khz(), clocks, &mut rcc.apb1);
 
     // Setup our gyoroscope.
     let sck = gpioa.pa5.into_af5(&mut gpioa.moder, &mut gpioa.afrl);
@@ -131,138 +119,61 @@ fn main() -> ! {
     // Setup our tasks to collect data from the accelerometer and gyro.
     // Give them a queue to send that data to the computation task with.
     let sensor_data_queue = Arc::new(freertos_rust::Queue::new(100).unwrap());
-    let accel_queue = sensor_data_queue.clone();
+    sensors::start_accelerometer_reading(accellerometer_i2c, sensor_data_queue.clone()).unwrap();
+
     let gyro_queue = sensor_data_queue.clone();
 
-    Task::new().name("ACEL").stack_size(512).priority(TaskPriority(1)).start(move || {
-        ld1.off().ok();
-        accelerometer.accel_odr(AccelOdr::Hz400).unwrap();
-        accelerometer.mag_odr(MagOdr::Hz75).unwrap();
-
-        loop {
-            // TODO replace this with DMA.
-            freertos_rust::CurrentTask::delay(Duration::ms(1000/400));
-
-            let vector = accelerometer.accel();
-
-            if let Ok(vector) = vector {
-                ld1.toggle().ok();
-                accel_queue.send(SensorData::Acceleration((vector.x, vector.y, vector.z)), Duration::zero()).ok();
-            }
-
-            let vector = accelerometer.mag();
-
-            if let Ok(vector) = vector {
-                ld4.toggle().ok();
-                accel_queue.send(SensorData::Magnetic((vector.x, vector.y, vector.z)), Duration::zero()).ok();
-            }
-        }
-    }).unwrap();
-
     Task::new().name("GYRO").stack_size(512).priority(TaskPriority(1)).start(move || {
-        ld6.off().ok();
         gyoroscope.set_odr(l3gd20::Odr::Hz760).unwrap();
+        gyoroscope.set_scale(l3gd20::Scale::Dps2000).unwrap();
+        gyoroscope.set_bandwidth(l3gd20::Bandwidth::High).unwrap();
 
         loop {
             // TODO replace this with DMA.
-            freertos_rust::CurrentTask::delay(Duration::ms(1000/760));
+            freertos_rust::CurrentTask::delay(Duration::ms(1000/380));
 
-            let readings = gyoroscope.all();
-            if let Ok(readings) = readings {
-                ld6.toggle().ok();
-                let vector = readings.gyro;
-                gyro_queue.send(SensorData::Rotation((vector.x, vector.y, vector.z)), Duration::zero()).ok();
+            if gyoroscope.status().unwrap().new_data {
+                let vector = gyoroscope.gyro();
+                if let Ok(vector) = vector {
+                    gyro_queue.send(sensors::SensorData::Rotation((vector.x, vector.y, vector.z)), Duration::zero()).ok();
+                }
             }
         }
     }).unwrap();
 
     Task::new().name("DATACOMPUTE").stack_size(1024).priority(TaskPriority(2)).start(move || {
+
+        ld1.off().ok();
+        ld4.off().ok();
+        ld6.off().ok();
+
         loop {
             let reading = sensor_data_queue.receive(Duration::infinite()).ok();
             if let Some(reading) = reading {
-                // info!("{:?}", reading);
+                match reading {
+                    sensors::SensorData::Acceleration(_acceleration) => {
+                        ld1.toggle().ok();
+                        // info!("{:?}", _acceleration);
+
+                        let x = (ACU::from_num(_acceleration.0) / 0x7FFF) * 2;
+                        let y = (ACU::from_num(_acceleration.1) / 0x7FFF) * 2;
+                        let z = (ACU::from_num(_acceleration.2) / 0x7FFF) * 2;
+                        let gravity = (x * x + y * y + z * z).sqrt();
+
+                        info!("GRAVITY: {}", gravity);
+                    },
+                    sensors::SensorData::Magnetic(_magnetic) => {
+                        ld4.toggle().ok();
+                        // info!("{:?}", _magnetic);
+                    },
+                    sensors::SensorData::Rotation(_rotation) => {
+                        ld6.toggle().ok();
+                        // info!("{:?}", _rotation);
+                    }
+                }
             }
         }
     }).unwrap();
 
     FreeRtosUtils::start_scheduler();
-}
-
-#[panic_handler]
-fn panic(info: &PanicInfo) -> ! {
-    interrupt::disable();
-
-    error!("{}", info);
-
-    loop {
-        // Get the debugger's attention.
-        asm::bkpt();
-    }
-}
-
-#[exception]
-fn DefaultHandler(irqn: i16) {
-    
-    let type_name = match irqn {
-        -1 => "Reset",
-        -2 => "NMI",
-        -3 => "HardFault",
-        -4 => "MemManage",
-        -5 => "BusFault",
-        -6 => "UsageFault",
-        -10..=-7 => "Reserved",
-        -11 => "SVCall",
-        -12 => "Debug Monitor",
-        -13 => "Reserved",
-        -14 => "PendSV",
-        -15 => "SysTick",
-        _ => if irqn < 0 {
-            "External Interrupt"
-        } else {
-            "Custom Exception"
-        }
-    };
-
-    panic!("Default Exception Handler: ({}) - {}", irqn, type_name);
-}
-
-#[exception]
-fn HardFault(ef: &ExceptionFrame) -> ! {
-    panic!("{:#?}", ef);
-}
-
-#[exception]
-fn MemoryManagement() -> ! {
-    panic!("Memory management exception.");
-}
-
-#[exception]
-fn BusFault() -> !{
-    panic!("Bus fault.");
-}
-
-#[exception]
-fn UsageFault() -> ! {
-    panic!("Usage fault.");
-}
-
-#[global_allocator]
-static ALLOCATOR: FreeRtosAllocator = FreeRtosAllocator;
-
-// We need a function to handle our allocation errors.
-#[alloc_error_handler]
-fn allocation_error_handler(_: core::alloc::Layout) -> ! {
-    // We just pass our error as a panic.
-    panic!("Allocation failure.");
-}
-
-#[no_mangle]
-extern "C" fn vApplicationIdleHook() {
-    // Will put the processor to sleep until the next interrupt happens.
-    asm::wfi();
-}
-
-#[no_mangle]
-extern "C" fn vApplicationStackOverflowHook(_px_task: FreeRtosTaskHandle, pc_task_name: FreeRtosCharPtr) {
-    panic!("Stack overflow in task: {:#?}", pc_task_name);
 }

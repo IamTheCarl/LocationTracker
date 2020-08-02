@@ -17,7 +17,12 @@ log = "0.4"
 switch-hal = "0.3"
 freertos-rust = "0.1"
 lsm303dlhc = "0.2"
+# TODO use the crate if it's ever updated.
 l3gd20 = { git = "https://github.com/bobgates/l3gd20" }
+fixed = "1.1"
+
+# TODO use the crate once its updated.
+fixed-sqrt = { git = "https://gitlab.com/spearman/fixed-sqrt-rs", commit = "9b354e62" }
 
 [dependencies.itm_logger]
 version = "0.1"

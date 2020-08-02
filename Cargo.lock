@@ -100,6 +100,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "fixed"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d4b58d7066268f26a74aba4b44d31d70ca57248536827318b80e92ab77e0e5b9"
+dependencies = [
+ "typenum",
+]
+
+[[package]]
+name = "fixed-sqrt"
+version = "0.2.1"
+source = "git+https://gitlab.com/spearman/fixed-sqrt-rs#9b354e623eac36229d794c67625b0944a272e6bf"
+dependencies = [
+ "fixed",
+ "integer-sqrt",
+ "typenum",
+]
+
+[[package]]
 name = "freertos-cargo-build"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -143,6 +162,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "integer-sqrt"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f65877bf7d44897a473350b1046277941cee20b263397e90869c50b6e766088b"
+
+[[package]]
 name = "itm_logger"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -167,6 +192,8 @@ version = "0.1.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
+ "fixed",
+ "fixed-sqrt",
  "freertos-cargo-build",
  "freertos-rust",
  "itm_logger",
