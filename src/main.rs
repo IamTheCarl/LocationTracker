@@ -31,8 +31,6 @@ use switch_hal::{
     ToggleableOutputSwitch,
 };
 
-use l3gd20::L3gd20;
-
 use alloc::sync::Arc;
 use fixed_sqrt::FixedSqrt;
 use fixed::types::I17F15;
@@ -87,7 +85,7 @@ fn main() -> ! {
     let miso = gpioa.pa6.into_af5(&mut gpioa.moder, &mut gpioa.afrl);
     let mosi = gpioa.pa7.into_af5(&mut gpioa.moder, &mut gpioa.afrl);
  
-    let spi = hal::spi::Spi::spi1(
+    let gyro_spi = hal::spi::Spi::spi1(
         dp.SPI1,
         (sck, miso, mosi),
         l3gd20::MODE,
@@ -96,11 +94,9 @@ fn main() -> ! {
         &mut rcc.apb2,
     );
 
-    let mut nss = gpioe.pe3
+    let mut gyro_cs = gpioe.pe3
         .into_push_pull_output(&mut gpioe.moder, &mut gpioe.otyper);
-    nss.set_high().ok();
-
-    let mut gyoroscope = L3gd20::new(spi, nss).unwrap();
+    gyro_cs.set_high().ok();
 
     // Setup our LEDs.
 
@@ -120,26 +116,7 @@ fn main() -> ! {
     // Give them a queue to send that data to the computation task with.
     let sensor_data_queue = Arc::new(freertos_rust::Queue::new(100).unwrap());
     sensors::start_accelerometer_reading(accellerometer_i2c, sensor_data_queue.clone()).unwrap();
-
-    let gyro_queue = sensor_data_queue.clone();
-
-    Task::new().name("GYRO").stack_size(512).priority(TaskPriority(1)).start(move || {
-        gyoroscope.set_odr(l3gd20::Odr::Hz760).unwrap();
-        gyoroscope.set_scale(l3gd20::Scale::Dps2000).unwrap();
-        gyoroscope.set_bandwidth(l3gd20::Bandwidth::High).unwrap();
-
-        loop {
-            // TODO replace this with DMA.
-            freertos_rust::CurrentTask::delay(Duration::ms(1000/380));
-
-            if gyoroscope.status().unwrap().new_data {
-                let vector = gyoroscope.gyro();
-                if let Ok(vector) = vector {
-                    gyro_queue.send(sensors::SensorData::Rotation((vector.x, vector.y, vector.z)), Duration::zero()).ok();
-                }
-            }
-        }
-    }).unwrap();
+    sensors::start_gyroscope_sensor_reading(gyro_spi, gyro_cs, sensor_data_queue.clone()).unwrap();
 
     Task::new().name("DATACOMPUTE").stack_size(1024).priority(TaskPriority(2)).start(move || {
 
