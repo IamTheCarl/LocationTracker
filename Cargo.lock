@@ -110,8 +110,9 @@ dependencies = [
 
 [[package]]
 name = "fixed-sqrt"
-version = "0.2.1"
-source = "git+https://gitlab.com/spearman/fixed-sqrt-rs#9b354e623eac36229d794c67625b0944a272e6bf"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "757bc106eeeca0cbb48e5642cc08dccc3d1cfa0ce6e02014d482e37ded827372"
 dependencies = [
  "fixed",
  "integer-sqrt",
