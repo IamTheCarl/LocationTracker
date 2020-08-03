@@ -1,0 +1,6 @@
+Experimental inertial tracking for dead reckoning.
+Also experimental FreeRTOS combined with Rust.
+Also experimental fixed point math.
+
+Honestly this is just one massive experiment that I never intended you to find.
+But I've already learned a lot from it. Maybe you can too.
