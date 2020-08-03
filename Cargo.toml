@@ -13,21 +13,43 @@ cortex-m-rt = "0.6"
 stm32f3xx-hal =  {version = "0.5", features = ["stm32f303xc", "rt"] }
 
 # Higher level abstractions.
-log = "0.4"
-switch-hal = "0.3"
-freertos-rust = "0.1"
-lsm303dlhc = "0.2"
-# TODO use the crate if it's ever updated.
-l3gd20 = { git = "https://github.com/bobgates/l3gd20" }
-fixed = "1.1"
-fixed-sqrt = "0.2.2"
+log = "0.4.*"
+switch-hal = "0.3.*"
+freertos-rust = "0.1.*"
+lsm303dlhc = "0.2.*"
+l3gd20 = "0.2.*"
+fixed = "1.1.*"
+cordic = "0.1.*"
 
 [dependencies.itm_logger]
 version = "0.1"
 features = ["perform-enabled-checks"]
 
+[dependencies.simba]
+version = "0.1.*"
+default-features = false
+features = ["partial_fixed_point_support"]
+
+[dependencies.nalgebra]
+version = "0.21.*"
+default-features = false
+
 [build-dependencies]
 freertos-cargo-build = "0.1"
+
+[patch.crates-io]
+# TODO remove all of these as things get updated.
+# Add that no_std support to nalgebra.
+cordic = { git = "https://github.com/crazycarl/cordic.git" }
+# We need a newer version of Simba to get vectors working with fixed types.
+simba = { git = "https://github.com/rustsim/simba.git" }
+#simba = { path = "../simba" }
+
+# Added features.
+lsm303dlhc = { git = "https://github.com/crazycarl/lsm303dlhc.git", branch = "read_status_register" }
+
+# Fixed a bug. I don't think the main branch is ever going to implement it.
+l3gd20 = { git = "https://github.com/bobgates/l3gd20" }
 
 [[bin]]
 name = "location_tracker"

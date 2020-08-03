@@ -34,18 +34,28 @@ where
         .expect("Failed to initalize accelerometer.");
 
     Task::new().name("ACEL").stack_size(512).priority(TaskPriority(1)).start(move || {
-        accelerometer.accel_odr(AccelOdr::Hz200).unwrap();
+        accelerometer.accel_odr(AccelOdr::Hz100).unwrap();
         accelerometer.mag_odr(MagOdr::Hz220).unwrap();
 
         loop {
-            // TODO replace this with DMA.
-            freertos_rust::CurrentTask::delay(Duration::ms(1000/220));
+            freertos_rust::CurrentTask::delay(Duration::ms(5));
 
-            let vector = accelerometer.accel();
+            // Read all acceleration data that is avalable.
+            loop {
+                let status = accelerometer.get_accel_status().unwrap();
 
-            if let Ok(vector) = vector {
+                if status.new_data {
+                    let vector = accelerometer.accel();
 
-                queue.send(SensorData::Acceleration((vector.x, vector.y, vector.z)), Duration::zero()).ok();
+                    if let Ok(vector) = vector {
+        
+                        queue.send(SensorData::Acceleration((vector.x, vector.y, vector.z)), Duration::zero()).ok();
+                    }
+                }
+                else
+                {
+                    break;
+                }
             }
 
             let vector = accelerometer.mag();
@@ -69,18 +79,19 @@ where
     let mut gyoroscope = L3gd20::new(spi, cs).unwrap();
 
     Task::new().name("GYRO").stack_size(512).priority(TaskPriority(1)).start(move || {
-        gyoroscope.set_odr(l3gd20::Odr::Hz760).unwrap();
+        gyoroscope.set_odr(l3gd20::Odr::Hz95).unwrap();
         gyoroscope.set_scale(l3gd20::Scale::Dps2000).unwrap();
-        gyoroscope.set_bandwidth(l3gd20::Bandwidth::High).unwrap();
+        gyoroscope.set_bandwidth(l3gd20::Bandwidth::Low).unwrap();
 
         loop {
-            // TODO replace this with DMA.
-            freertos_rust::CurrentTask::delay(Duration::ms(1000/380));
+            freertos_rust::CurrentTask::delay(Duration::ms(10));
 
-            if gyoroscope.status().unwrap().new_data {
+            while gyoroscope.status().unwrap().new_data {
                 let vector = gyoroscope.gyro();
                 if let Ok(vector) = vector {
-                    queue.send(SensorData::Rotation((vector.x, vector.y, vector.z)), Duration::zero()).ok();
+                    queue.send(SensorData::Rotation(
+                            (vector.x, vector.y, vector.z)
+                        ), Duration::zero()).ok();
                 }
             }
         }

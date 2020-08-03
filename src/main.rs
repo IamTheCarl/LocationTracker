@@ -32,12 +32,11 @@ use switch_hal::{
 };
 
 use alloc::sync::Arc;
-use fixed_sqrt::FixedSqrt;
-use fixed::types::I17F15;
+
+use nalgebra::*;
 
 // Acceleration units.
-type ACU = I17F15;
-
+type Scalar = fixed::types::I22F10;
 
 #[allow(non_upper_case_globals)]
 #[no_mangle]
@@ -124,28 +123,73 @@ fn main() -> ! {
         ld4.off().ok();
         ld6.off().ok();
 
+        let mut gyro_trim = (0, 0, 0);
+        let mut gyro_trim_cycles = 0;
+        const GYRO_TRIM_WAIT: i16 = 100;
+
+
         loop {
             let reading = sensor_data_queue.receive(Duration::infinite()).ok();
             if let Some(reading) = reading {
                 match reading {
-                    sensors::SensorData::Acceleration(_acceleration) => {
+                    sensors::SensorData::Acceleration(acceleration) => {
                         ld1.toggle().ok();
                         // info!("{:?}", _acceleration);
 
-                        let x = (ACU::from_num(_acceleration.0) / 0x7FFF) * 2;
-                        let y = (ACU::from_num(_acceleration.1) / 0x7FFF) * 2;
-                        let z = (ACU::from_num(_acceleration.2) / 0x7FFF) * 2;
-                        let gravity = (x * x + y * y + z * z).sqrt();
+                        let x = (Scalar::from_num(acceleration.0) / 0x7FFF) * 2;
+                        let y = (Scalar::from_num(acceleration.1) / 0x7FFF) * 2;
+                        let z = (Scalar::from_num(acceleration.2) / 0x7FFF) * 2;
 
-                        info!("GRAVITY: {}", gravity);
+                        let _gravity = cordic::sqrt(x * x + y * y + z * z);
+
+                        // info!("ACE: {}", _gravity);
                     },
-                    sensors::SensorData::Magnetic(_magnetic) => {
+                    sensors::SensorData::Magnetic(magnetic) => {
                         ld4.toggle().ok();
-                        // info!("{:?}", _magnetic);
+
+                        //  simba::scalar::FixedI22F10
+
+                        let x = Scalar::from_num(magnetic.0);
+
+                        // let x = simba::scalar::FixedI10F22::from_i16(0);
+                        let y = Scalar::from_num(magnetic.1);
+                        let z = Scalar::from_num(magnetic.2);
+
+                        let norm = cordic::sqrt(x * x + y * y + z * z);
+                        // let x = x / norm;
+                        // let y = y / norm;
+                        // let z = z / norm;
+                        // let mag = (x, y, z);
+
+                        // let mag = Vector3::new(x, y, z);
+                        // let norm = mag.norm();
+                        // let mag = mag.normalize();
+
+                        info!("NORM: {}", norm);
+                        // info!("MAG{:?}", mag);
                     },
-                    sensors::SensorData::Rotation(_rotation) => {
+                    sensors::SensorData::Rotation(vector) => {
                         ld6.toggle().ok();
-                        // info!("{:?}", _rotation);
+
+                        if gyro_trim_cycles < GYRO_TRIM_WAIT {
+                            gyro_trim_cycles += 1;
+    
+                            gyro_trim.0 += vector.0;
+                            gyro_trim.1 += vector.1;
+                            gyro_trim.2 += vector.2;
+                        }
+                        else if gyro_trim_cycles == GYRO_TRIM_WAIT {
+                            gyro_trim.0 /= GYRO_TRIM_WAIT;
+                            gyro_trim.1 /= GYRO_TRIM_WAIT;
+                            gyro_trim.2 /= GYRO_TRIM_WAIT;
+    
+                            // Disable re-trimming.
+                            gyro_trim_cycles = GYRO_TRIM_WAIT + 1;
+                        } else if gyro_trim_cycles > GYRO_TRIM_WAIT {
+                            let _vector = (vector.0 - gyro_trim.0, vector.1 - gyro_trim.1, vector.2 - gyro_trim.2);
+
+                            // info!("ROTA: {:?}", _vector);
+                        }
                     }
                 }
             }
